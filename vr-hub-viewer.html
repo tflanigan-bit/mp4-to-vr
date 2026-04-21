@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VR·HUB — GitHub 3D Video Viewer</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --cyan: #00f5ff;
+    --magenta: #ff00cc;
+    --bg: #040810;
+    --panel: #080f1a;
+    --border: #0a2040;
+    --text: #c0e8ff;
+    --dim: #3a5a7a;
+    --green: #00ff88;
+    --red: #ff3366;
+    --yellow: #ffcc00;
+    --purple: #8844ff;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,245,255,0.012) 2px, rgba(0,245,255,0.012) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: linear-gradient(rgba(0,245,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Layout */
+  .app {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-height: 100vh;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  .topbar {
+    background: rgba(4,8,16,0.95);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    backdrop-filter: blur(10px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .topbar::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan), var(--magenta), transparent);
+  }
+
+  .logo-sm {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    background: linear-gradient(135deg, var(--cyan), var(--magenta));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    white-space: nowrap;
+  }
+
+  .repo-form {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    min-width: 280px;
+  }
+
+  .repo-input {
+    flex: 1;
+    background: rgba(0,245,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.85rem;
+    padding: 8px 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .repo-input:focus { border-color: var(--cyan); }
+  .repo-input::placeholder { color: var(--dim); }
+
+  .btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    padding: 9px 18px;
+    border-radius: 2px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--cyan), var(--magenta));
+    color: #000;
+  }
+
+  .btn-primary:hover { box-shadow: 0 0 20px rgba(0,245,255,0.4); transform: translateY(-1px); }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
+  }
+
+  .btn-secondary:hover { background: rgba(0,245,255,0.07); }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--red);
+    border: 1px solid var(--red);
+  }
+
+  .token-toggle {
+    cursor: pointer;
+    font-size: 0.65rem;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+
+  .token-toggle:hover { color: var(--cyan); }
+
+  /* Main layout */
+  .main {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    height: calc(100vh - 57px);
+  }
+
+  @media (max-width: 700px) {
+    .main { grid-template-columns: 1fr; }
+    .sidebar { height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+  }
+
+  /* Sidebar */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    background: rgba(8,15,26,0.8);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--panel);
+    z-index: 10;
+  }
+
+  .sidebar-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.6rem;
+    letter-spacing: 0.25em;
+    color: var(--cyan);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .sidebar-title .dot {
+    width: 6px; height: 6px;
+    background: var(--cyan);
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--cyan);
+    animation: blink 2s infinite;
+  }
+
+  @keyframes blink {
+    0%, 90%, 100% { opacity: 1; }
+    45% { opacity: 0.2; }
+  }
+
+  .path-crumbs {
+    font-size: 0.65rem;
+    color: var(--dim);
+    margin-top: 6px;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .crumb {
+    cursor: pointer;
+    color: var(--cyan);
+    transition: opacity 0.2s;
+  }
+
+  .crumb:hover { text-decoration: underline; }
+
+  .file-list { flex: 1; }
+
+  .file-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(10,32,64,0.5);
+    transition: background 0.15s;
+    font-size: 0.8rem;
+    word-break: break-all;
+  }
+
+  .file-item:hover { background: rgba(0,245,255,0.05); }
+  .file-item.active { background: rgba(0,245,255,0.08); border-left: 2px solid var(--cyan); }
+  .file-item.is-video { color: var(--green); }
+  .file-item.is-dir { color: var(--cyan); }
+
+  .file-icon { font-size: 1.1rem; flex-shrink: 0; }
+  .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-size { font-size: 0.65rem; color: var(--dim); flex-shrink: 0; }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--dim);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    line-height: 2;
+  }
+
+  /* Player area */
+  .player-area {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Player panel */
+  .player-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 24px;
+    gap: 20px;
+  }
+
+  .placeholder-screen {
+    width: 100%;
+    max-width: 700px;
+    aspect-ratio: 2/1;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--dim);
+    font-size: 0.8rem;
+    letter-spacing: 0.15em;
+    gap: 12px;
+  }
+
+  .placeholder-screen .big-icon { font-size: 3rem; }
+
+  /* Video player */
+  #playerWrap {
+    width: 100%;
+    max-width: 800px;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .now-playing {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .np-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.55rem;
+    letter-spacing: 0.2em;
+    color: var(--magenta);
+    background: rgba(255,0,204,0.1);
+    border: 1px solid rgba(255,0,204,0.3);
+    padding: 3px 8px;
+    border-radius: 2px;
+  }
+
+  .np-name {
+    font-size: 0.85rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* SBS labels */
+  .eye-labels {
+    display: flex;
+    width: 100%;
+    max-width: 800px;
+    justify-content: space-around;
+    font-size: 0.62rem;
+    letter-spacing: 0.25em;
+    color: var(--dim);
+  }
+
+  .eye-label-left { color: var(--cyan); }
+  .eye-label-right { color: var(--magenta); }
+
+  #mainVideo {
+    width: 100%;
+    border-radius: 2px;
+    background: #000;
+    border: 1px solid var(--border);
+    box-shadow: 0 0 40px rgba(0,245,255,0.08);
+    max-height: 50vh;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 800px;
+    align-items: center;
+  }
+
+  .ctrl-chip {
+    background: rgba(0,245,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 5px 12px;
+    font-size: 0.68rem;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+  }
+
+  .ctrl-chip span { color: var(--cyan); }
+
+  /* VR Mode */
+  #vrMode {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 9000;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #vrVideo {
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+  }
+
+  .vr-exit {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 9001;
+    background: rgba(255,0,0,0.7);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    padding: 8px 16px;
+    cursor: pointer;
+  }
+
+  .vr-center-line {
+    position: fixed;
+    top: 0; bottom: 0;
+    left: 50%;
+    width: 2px;
+    background: rgba(255,255,255,0.08);
+    z-index: 9001;
+    transform: translateX(-50%);
+  }
+
+  /* Pinned repos */
+  .pinned-section {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .pin-title {
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    color: var(--dim);
+    margin-bottom: 8px;
+  }
+
+  .pin-list { display: flex; flex-direction: column; gap: 4px; }
+
+  .pin-item {
+    font-size: 0.72rem;
+    color: var(--cyan);
+    cursor: pointer;
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+  }
+
+  .pin-item:hover { opacity: 1; }
+
+  /* Token modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 8000;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-overlay.show { display: flex; }
+
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 28px;
+    max-width: 420px;
+    width: 90%;
+    position: relative;
+  }
+
+  .modal::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan), var(--magenta), transparent);
+  }
+
+  .modal-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.75rem;
+    letter-spacing: 0.2em;
+    color: var(--cyan);
+    margin-bottom: 16px;
+  }
+
+  .modal p {
+    font-size: 0.72rem;
+    color: var(--dim);
+    line-height: 1.7;
+    margin-bottom: 14px;
+  }
+
+  .modal input {
+    width: 100%;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    padding: 10px 14px;
+    outline: none;
+    margin-bottom: 14px;
+  }
+
+  .modal input:focus { border-color: var(--cyan); }
+
+  .modal-btns { display: flex; gap: 10px; }
+
+  /* Loading spinner */
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-msg {
+    background: rgba(255,51,102,0.08);
+    border: 1px solid rgba(255,51,102,0.3);
+    border-radius: 2px;
+    padding: 10px 14px;
+    font-size: 0.72rem;
+    color: var(--red);
+    margin-top: 8px;
+    display: none;
+  }
+
+  /* Info bar */
+  .info-bar {
+    background: rgba(0,245,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 10px 16px;
+    font-size: 0.68rem;
+    color: var(--dim);
+    line-height: 1.7;
+    max-width: 800px;
+    width: 100%;
+  }
+
+  .info-bar strong { color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<!-- VR Fullscreen Mode -->
+<div id="vrMode">
+  <button class="vr-exit" onclick="exitVR()">✕ EXIT VR</button>
+  <div class="vr-center-line"></div>
+  <video id="vrVideo" autoplay loop playsinline></video>
+</div>
+
+<!-- Token Modal -->
+<div class="modal-overlay" id="tokenModal">
+  <div class="modal">
+    <div class="modal-title">⬡ GITHUB TOKEN (OPTIONAL)</div>
+    <p>A Personal Access Token lets you browse private repos and raises the API rate limit from 60 → 5000 req/hr. Leave blank for public repos only.</p>
+    <input type="password" id="tokenInput" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"/>
+    <p style="font-size:0.65rem; color:#2a4a6a;">Generate at: github.com → Settings → Developer Settings → Tokens (classic). Select <strong style="color:var(--cyan)">repo</strong> scope.</p>
+    <div class="modal-btns">
+      <button class="btn btn-primary" onclick="saveToken()">SAVE TOKEN</button>
+      <button class="btn btn-secondary" onclick="closeToken()">SKIP</button>
+      <button class="btn btn-danger" onclick="clearToken()">CLEAR</button>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="logo-sm">VR·HUB</div>
+    <div class="repo-form">
+      <input class="repo-input" id="repoInput" placeholder="username/repo-name  (e.g. tflanigan/vr-videos)" type="text"/>
+      <button class="btn btn-primary" onclick="loadRepo()">BROWSE</button>
+    </div>
+    <div class="token-toggle" onclick="openToken()">🔑 TOKEN</div>
+  </div>
+
+  <!-- MAIN AREA -->
+  <div class="main">
+
+    <!-- SIDEBAR — File Browser -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title"><div class="dot"></div> FILE BROWSER</div>
+        <div class="path-crumbs" id="pathCrumbs">[ no repo loaded ]</div>
+      </div>
+
+      <div class="file-list" id="fileList">
+        <div class="empty-state">
+          📡<br/>
+          Enter a GitHub repo above<br/>
+          to browse its files
+        </div>
+      </div>
+
+      <div class="pinned-section" id="pinnedSection" style="display:none">
+        <div class="pin-title">◈ RECENT REPOS</div>
+        <div class="pin-list" id="pinList"></div>
+      </div>
+    </div>
+
+    <!-- PLAYER AREA -->
+    <div class="player-area">
+      <div class="player-panel">
+
+        <!-- Placeholder -->
+        <div class="placeholder-screen" id="placeholder">
+          <div class="big-icon">👁️</div>
+          <div>LOAD A REPO — SELECT A VIDEO</div>
+          <div style="font-size:0.65rem;">Supports MP4, WebM, SBS 3D videos</div>
+        </div>
+
+        <!-- Video player -->
+        <div id="playerWrap">
+          <div class="now-playing">
+            <div class="np-label">▶ NOW PLAYING</div>
+            <div class="np-name" id="npName">—</div>
+          </div>
+          <div class="eye-labels">
+            <span class="eye-label-left">◀ LEFT EYE</span>
+            <span class="eye-label-right">RIGHT EYE ▶</span>
+          </div>
+          <video id="mainVideo" controls autoplay loop></video>
+          <div class="controls">
+            <button class="btn btn-primary" onclick="enterVR()">⬡ VR CARDBOARD MODE</button>
+            <button class="btn btn-secondary" onclick="toggleLoop()">↺ LOOP: ON</button>
+            <div class="ctrl-chip" id="vidInfo">—</div>
+            <a class="btn btn-secondary" id="rawDlLink" download target="_blank" style="text-decoration:none;">▼ RAW FILE</a>
+          </div>
+          <div class="info-bar">
+            <strong>Google Cardboard:</strong> Tap "VR Cardboard Mode" → place phone in headset → the video fills your screen in SBS format. Works with any standard Google Cardboard viewer! For non-SBS videos, you'll see the regular view on both sides.
+          </div>
+        </div>
+
+        <div class="error-msg" id="errorMsg"></div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// --- State ---
+let ghToken = localStorage.getItem('vr_gh_token') || '';
+let currentRepo = '';
+let currentPath = '';
+let recentRepos = JSON.parse(localStorage.getItem('vr_recent') || '[]');
+let isLooping = true;
+const VIDEO_EXT = ['.mp4', '.webm', '.mov', '.mkv', '.avi', '.ogv', '.m4v'];
+
+// --- Token ---
+function openToken() { document.getElementById('tokenModal').classList.add('show'); document.getElementById('tokenInput').value = ghToken; }
+function closeToken() { document.getElementById('tokenModal').classList.remove('show'); }
+function saveToken() { ghToken = document.getElementById('tokenInput').value.trim(); localStorage.setItem('vr_gh_token', ghToken); closeToken(); }
+function clearToken() { ghToken = ''; localStorage.removeItem('vr_gh_token'); document.getElementById('tokenInput').value = ''; closeToken(); }
+
+// --- Repo loading ---
+function loadRepo(repo) {
+  const val = repo || document.getElementById('repoInput').value.trim();
+  if (!val || !val.includes('/')) { showError('Enter a valid repo: username/repo-name'); return; }
+  currentRepo = val.replace('https://github.com/', '').replace(/\/$/, '');
+  currentPath = '';
+  document.getElementById('repoInput').value = currentRepo;
+  addRecent(currentRepo);
+  loadDir('');
+}
+
+function addRecent(repo) {
+  recentRepos = [repo, ...recentRepos.filter(r => r !== repo)].slice(0, 6);
+  localStorage.setItem('vr_recent', JSON.stringify(recentRepos));
+  renderRecents();
+}
+
+function renderRecents() {
+  const sec = document.getElementById('pinnedSection');
+  const list = document.getElementById('pinList');
+  if (recentRepos.length === 0) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+  list.innerHTML = recentRepos.map(r => `<div class="pin-item" onclick="loadRepo('${r}')">📁 ${r}</div>`).join('');
+}
+
+renderRecents();
+
+// --- Directory loading ---
+async function loadDir(path) {
+  currentPath = path;
+  updateCrumbs();
+  const fl = document.getElementById('fileList');
+  fl.innerHTML = `<div class="empty-state"><span class="spinner"></span>Loading...</div>`;
+
+  const url = `https://api.github.com/repos/${currentRepo}/contents/${path}`;
+  const headers = { 'Accept': 'application/vnd.github.v3+json' };
+  if (ghToken) headers['Authorization'] = `token ${ghToken}`;
+
+  try {
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+    const items = await res.json();
+    if (!Array.isArray(items)) throw new Error('Not a directory');
+
+    // Sort: dirs first, then files
+    items.sort((a, b) => {
+      if (a.type === b.type) return a.name.localeCompare(b.name);
+      return a.type === 'dir' ? -1 : 1;
+    });
+
+    renderFiles(items);
+    hideError();
+  } catch (e) {
+    fl.innerHTML = `<div class="empty-state" style="color:var(--red)">⚠ ${e.message}<br/><br/><span style="color:var(--dim);font-size:0.65rem;">Check repo name & token</span></div>`;
+    showError(e.message);
+  }
+}
+
+function renderFiles(items) {
+  const fl = document.getElementById('fileList');
+  if (items.length === 0) {
+    fl.innerHTML = '<div class="empty-state" style="color:var(--dim)">📂 Empty directory</div>';
+    return;
+  }
+
+  // Add back button if not root
+  let html = '';
+  if (currentPath) {
+    html += `<div class="file-item is-dir" onclick="goUp()"><span class="file-icon">↩</span><span class="file-name">.. (back)</span></div>`;
+  }
+
+  items.forEach(item => {
+    const isDir = item.type === 'dir';
+    const ext = item.name.toLowerCase().slice(item.name.lastIndexOf('.'));
+    const isVideo = VIDEO_EXT.includes(ext);
+    const icon = isDir ? '📁' : isVideo ? '🎬' : '📄';
+    const cls = isDir ? 'is-dir' : isVideo ? 'is-video' : '';
+    const size = item.size ? formatSize(item.size) : '';
+    const onclick = isDir
+      ? `loadDir('${item.path}')`
+      : isVideo
+        ? `playVideo('${item.download_url}', '${item.name}', ${item.size})`
+        : `openRaw('${item.html_url}')`;
+
+    html += `
+      <div class="file-item ${cls}" onclick="${onclick}">
+        <span class="file-icon">${icon}</span>
+        <span class="file-name" title="${item.name}">${item.name}</span>
+        ${size ? `<span class="file-size">${size}</span>` : ''}
+      </div>`;
+  });
+
+  fl.innerHTML = html;
+}
+
+function goUp() {
+  const parts = currentPath.split('/');
+  parts.pop();
+  loadDir(parts.join('/'));
+}
+
+function updateCrumbs() {
+  const el = document.getElementById('pathCrumbs');
+  if (!currentRepo) { el.textContent = '[ no repo loaded ]'; return; }
+  const parts = currentPath ? currentPath.split('/') : [];
+  let html = `<span class="crumb" onclick="loadDir('')">${currentRepo}</span>`;
+  let built = '';
+  parts.forEach((p, i) => {
+    built += (built ? '/' : '') + p;
+    const path = built;
+    html += ` / <span class="crumb" onclick="loadDir('${path}')">${p}</span>`;
+  });
+  el.innerHTML = html;
+}
+
+// --- Video player ---
+function playVideo(url, name, size) {
+  const video = document.getElementById('mainVideo');
+  const wrap = document.getElementById('playerWrap');
+  const ph = document.getElementById('placeholder');
+
+  video.src = url;
+  document.getElementById('npName').textContent = name;
+  document.getElementById('vidInfo').innerHTML = `<span>${formatSize(size)}</span>`;
+  document.getElementById('rawDlLink').href = url;
+  document.getElementById('rawDlLink').download = name;
+
+  wrap.style.display = 'flex';
+  ph.style.display = 'none';
+
+  video.load();
+  video.play().catch(() => {});
+
+  // Highlight active
+  document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+  event.currentTarget && event.currentTarget.classList.add('active');
+}
+
+function openRaw(url) { window.open(url, '_blank'); }
+
+function toggleLoop() {
+  isLooping = !isLooping;
+  document.getElementById('mainVideo').loop = isLooping;
+  event.currentTarget.textContent = `↺ LOOP: ${isLooping ? 'ON' : 'OFF'}`;
+}
+
+// --- VR Mode ---
+function enterVR() {
+  const src = document.getElementById('mainVideo').src;
+  if (!src) return;
+  const vr = document.getElementById('vrMode');
+  const vrVid = document.getElementById('vrVideo');
+  vrVid.src = src;
+  vr.style.display = 'flex';
+  vrVid.play();
+
+  // Request fullscreen + orientation lock
+  try {
+    if (vr.requestFullscreen) vr.requestFullscreen();
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('landscape').catch(() => {});
+    }
+  } catch(e) {}
+}
+
+function exitVR() {
+  const vr = document.getElementById('vrMode');
+  const vrVid = document.getElementById('vrVideo');
+  vrVid.pause();
+  vrVid.src = '';
+  vr.style.display = 'none';
+  try {
+    if (document.exitFullscreen) document.exitFullscreen();
+    if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+  } catch(e) {}
+}
+
+// ESC key exits VR
+document.addEventListener('keydown', e => { if (e.key === 'Escape') exitVR(); });
+
+// --- Utils ---
+function formatSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  if (bytes < 1024*1024*1024) return (bytes/1024/1024).toFixed(1) + ' MB';
+  return (bytes/1024/1024/1024).toFixed(2) + ' GB';
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+}
+
+function hideError() { document.getElementById('errorMsg').style.display = 'none'; }
+
+// Enter key in repo input
+document.getElementById('repoInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadRepo();
+});
+</script>
+</body>
+</html>

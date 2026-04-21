@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VR·FORGE — MP4 → 3D Converter</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --cyan: #00f5ff;
+    --magenta: #ff00cc;
+    --bg: #040810;
+    --panel: #080f1a;
+    --border: #0a2040;
+    --text: #c0e8ff;
+    --dim: #3a5a7a;
+    --green: #00ff88;
+    --red: #ff3366;
+    --yellow: #ffcc00;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,245,255,0.015) 2px,
+      rgba(0,245,255,0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  /* Grid bg */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,245,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,245,255,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+  }
+
+  header {
+    text-align: center;
+    padding: 40px 0 32px;
+  }
+
+  .logo {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(2rem, 6vw, 3.5rem);
+    font-weight: 900;
+    letter-spacing: 0.15em;
+    background: linear-gradient(135deg, var(--cyan) 0%, var(--magenta) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: none;
+    position: relative;
+  }
+
+  .logo-sub {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.5em;
+    color: var(--dim);
+    margin-top: 8px;
+    text-transform: uppercase;
+  }
+
+  .badge {
+    display: inline-block;
+    background: linear-gradient(90deg, var(--magenta), var(--cyan));
+    color: #000;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    padding: 3px 10px;
+    border-radius: 2px;
+    margin-top: 12px;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px;
+    margin-bottom: 20px;
+    position: relative;
+    box-shadow: 0 0 30px rgba(0,245,255,0.04), inset 0 0 20px rgba(0,0,0,0.4);
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan), var(--magenta), transparent);
+  }
+
+  .panel-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.3em;
+    color: var(--cyan);
+    text-transform: uppercase;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel-title::before {
+    content: '';
+    width: 8px; height: 8px;
+    background: var(--cyan);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--cyan);
+    animation: blink 2s infinite;
+  }
+
+  @keyframes blink {
+    0%, 90%, 100% { opacity: 1; }
+    45% { opacity: 0.2; }
+  }
+
+  /* Drop zone */
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 4px;
+    padding: 50px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+    background: rgba(0,245,255,0.01);
+  }
+
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--cyan);
+    background: rgba(0,245,255,0.04);
+    box-shadow: 0 0 20px rgba(0,245,255,0.1);
+  }
+
+  .dropzone input[type=file] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .drop-icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+    filter: drop-shadow(0 0 10px var(--cyan));
+  }
+
+  .drop-text {
+    font-size: 1rem;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .drop-sub {
+    font-size: 0.7rem;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+  }
+
+  /* Video preview */
+  #previewBox {
+    display: none;
+    gap: 16px;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #sourceVideo {
+    width: 100%;
+    max-width: 480px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: #000;
+    box-shadow: 0 0 20px rgba(0,245,255,0.1);
+  }
+
+  .vid-meta {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .meta-chip {
+    background: rgba(0,245,255,0.07);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 4px 12px;
+    font-size: 0.72rem;
+    color: var(--cyan);
+  }
+
+  /* Settings */
+  .settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  @media (max-width: 600px) { .settings-grid { grid-template-columns: 1fr; } }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .field label {
+    font-size: 0.68rem;
+    letter-spacing: 0.15em;
+    color: var(--dim);
+    text-transform: uppercase;
+  }
+
+  .field select, .field input[type=range] {
+    background: rgba(0,245,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.85rem;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+    width: 100%;
+  }
+
+  .field select:focus, .field input[type=range]:focus {
+    border-color: var(--cyan);
+  }
+
+  .field select option { background: #080f1a; }
+
+  input[type=range] {
+    padding: 4px 0 !important;
+    cursor: pointer;
+    height: 38px;
+    accent-color: var(--cyan);
+  }
+
+  .range-val {
+    font-size: 0.85rem;
+    color: var(--cyan);
+    text-align: right;
+    margin-top: -4px;
+  }
+
+  /* Progress */
+  .progress-wrap {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .progress-bar-bg {
+    width: 100%;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--cyan), var(--magenta));
+    border-radius: 3px;
+    transition: width 0.1s linear;
+    box-shadow: 0 0 8px var(--cyan);
+  }
+
+  .progress-label {
+    font-size: 0.72rem;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+  }
+
+  .status-log {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 12px;
+    font-size: 0.7rem;
+    color: var(--dim);
+    min-height: 60px;
+    max-height: 120px;
+    overflow-y: auto;
+    line-height: 1.8;
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  .btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 12px 24px;
+    border-radius: 2px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--cyan), var(--magenta));
+    color: #000;
+    box-shadow: 0 0 20px rgba(0,245,255,0.3);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: 0 0 30px rgba(0,245,255,0.5);
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: rgba(0,245,255,0.08);
+  }
+
+  .btn-download {
+    background: linear-gradient(135deg, var(--green), #00ccff);
+    color: #000;
+    box-shadow: 0 0 20px rgba(0,255,136,0.3);
+    animation: pulse-glow 2s infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(0,255,136,0.3); }
+    50% { box-shadow: 0 0 40px rgba(0,255,136,0.6); }
+  }
+
+  /* SBS Preview */
+  #sbsPreview {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  #sbsCanvas {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: #000;
+    box-shadow: 0 0 30px rgba(255,0,204,0.15);
+  }
+
+  .sbs-label {
+    display: flex;
+    width: 100%;
+    justify-content: space-around;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    color: var(--dim);
+  }
+
+  .sbs-label span { color: var(--magenta); }
+
+  /* How-to */
+  .how-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+  }
+
+  .how-step {
+    background: rgba(0,245,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    position: relative;
+  }
+
+  .step-num {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2rem;
+    font-weight: 900;
+    color: var(--border);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .step-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.65rem;
+    color: var(--cyan);
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+  }
+
+  .step-desc {
+    font-size: 0.72rem;
+    color: var(--dim);
+    line-height: 1.6;
+  }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    font-size: 0.65rem;
+    color: var(--dim);
+    letter-spacing: 0.15em;
+    padding: 24px 0;
+    border-top: 1px solid var(--border);
+    margin-top: 40px;
+  }
+
+  footer span { color: var(--cyan); }
+
+  /* Hidden canvas for rendering */
+  #renderCanvas { display: none; }
+
+  .info-box {
+    background: rgba(255,204,0,0.05);
+    border: 1px solid rgba(255,204,0,0.2);
+    border-radius: 2px;
+    padding: 12px 16px;
+    font-size: 0.7rem;
+    color: var(--yellow);
+    line-height: 1.7;
+    margin-top: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="logo">VR·FORGE</div>
+    <div class="logo-sub">Stereoscopic 3D Video Encoder</div>
+    <div class="badge">⬡ GOOGLE CARDBOARD COMPATIBLE ⬡</div>
+  </header>
+
+  <!-- LOAD VIDEO -->
+  <div class="panel">
+    <div class="panel-title">01 — LOAD SOURCE VIDEO</div>
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept="video/mp4,video/*"/>
+      <div class="drop-icon">📹</div>
+      <div class="drop-text">Drop MP4 here or click to browse</div>
+      <div class="drop-sub">Supports MP4 · WebM · MOV · AVI</div>
+    </div>
+    <div id="previewBox" style="display:none; flex-direction:column; align-items:center; gap:14px; margin-top:20px;">
+      <video id="sourceVideo" controls></video>
+      <div class="vid-meta">
+        <div class="meta-chip" id="metaRes">--</div>
+        <div class="meta-chip" id="metaDur">--</div>
+        <div class="meta-chip" id="metaName">--</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="panel">
+    <div class="panel-title">02 — ENCODE SETTINGS</div>
+    <div class="settings-grid">
+      <div class="field">
+        <label>3D Mode</label>
+        <select id="modeSelect">
+          <option value="parallel">Parallel (same frame both eyes)</option>
+          <option value="parallax" selected>Parallax Shift (fake depth)</option>
+          <option value="anaglyph_prep">Wide Parallax (strong depth)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Output Quality</label>
+        <select id="qualSelect">
+          <option value="4000000">High (4 Mbps)</option>
+          <option value="2000000" selected>Medium (2 Mbps)</option>
+          <option value="1000000">Low (1 Mbps)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Parallax Strength: <span id="parallaxVal">12</span>px</label>
+        <input type="range" id="parallaxRange" min="0" max="40" value="12" step="1"/>
+      </div>
+      <div class="field">
+        <label>Output Scale</label>
+        <select id="scaleSelect">
+          <option value="1.0">100% (Full Resolution)</option>
+          <option value="0.75" selected>75% (Recommended)</option>
+          <option value="0.5">50% (Faster)</option>
+        </select>
+      </div>
+    </div>
+    <div class="info-box">
+      ⚡ <strong>How 3D works:</strong> Your 2D video is rendered twice side-by-side. The right eye view is slightly shifted horizontally to create a parallax depth illusion. Works great with Google Cardboard! For best results use <strong>Parallax Shift</strong> with 8–16px.
+    </div>
+  </div>
+
+  <!-- SBS PREVIEW -->
+  <div class="panel">
+    <div class="panel-title">03 — STEREOSCOPIC PREVIEW</div>
+    <div id="sbsPreview">
+      <div class="sbs-label"><span>◀ LEFT EYE</span><span>RIGHT EYE ▶</span></div>
+      <canvas id="sbsCanvas"></canvas>
+      <div class="sbs-label" style="font-size:0.6rem; color: var(--dim);">Preview at current frame — encode to get the full video</div>
+    </div>
+    <div id="sbsPlaceholder" style="text-align:center; padding:30px; color:var(--dim); font-size:0.75rem; letter-spacing:0.1em;">
+      [ Load a video to see SBS preview ]
+    </div>
+  </div>
+
+  <!-- ENCODE -->
+  <div class="panel">
+    <div class="panel-title">04 — ENCODE & DOWNLOAD</div>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel">Initializing encoder...</div>
+      <div class="status-log" id="statusLog"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="encodeBtn" disabled>⬡ ENCODE TO 3D SBS</button>
+      <button class="btn btn-secondary" id="previewBtn" disabled>◈ UPDATE PREVIEW</button>
+      <a class="btn btn-download" id="downloadLink" style="display:none; text-decoration:none;">▼ DOWNLOAD 3D VIDEO</a>
+    </div>
+  </div>
+
+  <!-- HOW TO USE -->
+  <div class="panel">
+    <div class="panel-title">◈ HOW TO USE WITH GOOGLE CARDBOARD</div>
+    <div class="how-grid">
+      <div class="how-step">
+        <div class="step-num">01</div>
+        <div class="step-title">Encode</div>
+        <div class="step-desc">Drop your MP4 above, choose settings, hit Encode. Output is a WebM SBS video.</div>
+      </div>
+      <div class="how-step">
+        <div class="step-num">02</div>
+        <div class="step-title">Transfer</div>
+        <div class="step-desc">Download the 3D file. Transfer to your phone via USB, cloud, or use the GitHub Viewer app.</div>
+      </div>
+      <div class="how-step">
+        <div class="step-num">03</div>
+        <div class="step-title">Play</div>
+        <div class="step-desc">Open in a VR video player (VeeR, YouTube VR, or any SBS player). Select "Side by Side" mode.</div>
+      </div>
+      <div class="how-step">
+        <div class="step-num">04</div>
+        <div class="step-title">Cardboard</div>
+        <div class="step-desc">Pop your phone into Google Cardboard and enjoy your converted 3D video!</div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    VR·FORGE — Stereoscopic Encoder // Made by <span>Friday</span> for <span>Tripp</span> // GOD OF TECHNOLOGY CERTIFIED 👑
+  </footer>
+</div>
+
+<!-- Hidden elements for processing -->
+<canvas id="renderCanvas"></canvas>
+<video id="renderVideo" style="display:none" muted playsinline></video>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const dropzone = document.getElementById('dropzone');
+const sourceVideo = document.getElementById('sourceVideo');
+const renderVideo = document.getElementById('renderVideo');
+const previewBox = document.getElementById('previewBox');
+const sbsCanvas = document.getElementById('sbsCanvas');
+const sbsCtx = sbsCanvas.getContext('2d');
+const renderCanvas = document.getElementById('renderCanvas');
+const renderCtx = renderCanvas.getContext('2d');
+const encodeBtn = document.getElementById('encodeBtn');
+const previewBtn = document.getElementById('previewBtn');
+const downloadLink = document.getElementById('downloadLink');
+const progressWrap = document.getElementById('progressWrap');
+const progressFill = document.getElementById('progressFill');
+const progressLabel = document.getElementById('progressLabel');
+const statusLog = document.getElementById('statusLog');
+const parallaxRange = document.getElementById('parallaxRange');
+const parallaxVal = document.getElementById('parallaxVal');
+const sbsPreview = document.getElementById('sbsPreview');
+const sbsPlaceholder = document.getElementById('sbsPlaceholder');
+
+let sourceFile = null;
+let videoBlob = null;
+
+// Drag/drop
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('video/')) loadFile(f);
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) loadFile(fileInput.files[0]);
+});
+
+parallaxRange.addEventListener('input', () => {
+  parallaxVal.textContent = parallaxRange.value;
+  if (sourceFile) updatePreview();
+});
+
+document.getElementById('modeSelect').addEventListener('change', () => {
+  if (sourceFile) updatePreview();
+});
+
+function loadFile(file) {
+  sourceFile = file;
+  const url = URL.createObjectURL(file);
+  sourceVideo.src = url;
+  renderVideo.src = url;
+
+  sourceVideo.onloadedmetadata = () => {
+    const w = sourceVideo.videoWidth;
+    const h = sourceVideo.videoHeight;
+    const dur = sourceVideo.duration;
+    document.getElementById('metaRes').textContent = `${w}×${h}`;
+    document.getElementById('metaDur').textContent = `${dur.toFixed(1)}s`;
+    document.getElementById('metaName').textContent = file.name.slice(0, 20) + (file.name.length > 20 ? '…' : '');
+    previewBox.style.display = 'flex';
+    encodeBtn.disabled = false;
+    previewBtn.disabled = false;
+    downloadLink.style.display = 'none';
+    sbsPreview.style.display = 'flex';
+    sbsPlaceholder.style.display = 'none';
+    updatePreview();
+  };
+}
+
+function getParallax() {
+  const mode = document.getElementById('modeSelect').value;
+  const base = parseInt(parallaxRange.value);
+  if (mode === 'parallel') return 0;
+  if (mode === 'anaglyph_prep') return base * 2;
+  return base;
+}
+
+function drawSBSFrame(src, canvas, ctx, scale = 1) {
+  const vw = src.videoWidth || src.width;
+  const vh = src.videoHeight || src.height;
+  const pw = getParallax();
+  const outW = Math.floor(vw * 2 * scale);
+  const outH = Math.floor(vh * scale);
+  canvas.width = outW;
+  canvas.height = outH;
+
+  const halfW = Math.floor(vw * scale);
+
+  // Left eye — normal
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, halfW, outH);
+  ctx.clip();
+  ctx.drawImage(src, -pw * scale, 0, vw * scale + pw * scale, outH);
+  ctx.restore();
+
+  // Divider
+  ctx.fillStyle = '#000';
+  ctx.fillRect(halfW - 1, 0, 2, outH);
+
+  // Right eye — shifted right slightly to simulate depth
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(halfW, 0, halfW, outH);
+  ctx.clip();
+  ctx.drawImage(src, halfW + pw * scale, 0, vw * scale + pw * scale, outH);
+  ctx.restore();
+}
+
+function updatePreview() {
+  if (!sourceFile) return;
+  // Seek to a good frame
+  sourceVideo.currentTime = Math.min(sourceVideo.duration * 0.3, 2);
+  sourceVideo.onseeked = () => {
+    const scale = parseFloat(document.getElementById('scaleSelect').value);
+    drawSBSFrame(sourceVideo, sbsCanvas, sbsCtx, Math.min(scale, 0.5));
+  };
+}
+
+previewBtn.addEventListener('click', updatePreview);
+
+function log(msg) {
+  const line = document.createElement('div');
+  line.textContent = `> ${msg}`;
+  statusLog.appendChild(line);
+  statusLog.scrollTop = statusLog.scrollHeight;
+}
+
+function setProgress(pct, label) {
+  progressFill.style.width = pct + '%';
+  progressLabel.textContent = label;
+}
+
+encodeBtn.addEventListener('click', async () => {
+  if (!sourceFile) return;
+
+  encodeBtn.disabled = true;
+  previewBtn.disabled = true;
+  downloadLink.style.display = 'none';
+  progressWrap.style.display = 'flex';
+  statusLog.innerHTML = '';
+  setProgress(0, 'Starting encoder...');
+
+  const scale = parseFloat(document.getElementById('scaleSelect').value);
+  const bitrate = parseInt(document.getElementById('qualSelect').value);
+
+  log('Loading video metadata...');
+
+  await new Promise(r => {
+    renderVideo.onloadedmetadata = r;
+    if (renderVideo.readyState >= 1) r();
+  });
+
+  const vw = renderVideo.videoWidth;
+  const vh = renderVideo.videoHeight;
+  const dur = renderVideo.duration;
+  const fps = 30;
+
+  renderCanvas.width = Math.floor(vw * 2 * scale);
+  renderCanvas.height = Math.floor(vh * scale);
+
+  log(`Source: ${vw}×${vh} / ${dur.toFixed(1)}s`);
+  log(`Output: ${renderCanvas.width}×${renderCanvas.height} @ ${(bitrate/1000000).toFixed(1)}Mbps`);
+
+  // Check MediaRecorder support
+  const mimeTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  let mimeType = '';
+  for (const m of mimeTypes) {
+    if (MediaRecorder.isTypeSupported(m)) { mimeType = m; break; }
+  }
+
+  if (!mimeType) {
+    log('ERROR: MediaRecorder not supported in this browser!');
+    encodeBtn.disabled = false;
+    return;
+  }
+
+  log(`Codec: ${mimeType}`);
+  log('Recording...');
+  setProgress(5, 'Recording frames...');
+
+  const stream = renderCanvas.captureStream(fps);
+  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrate });
+  const chunks = [];
+
+  recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+  recorder.onstop = () => {
+    log('Encoding complete!');
+    const blob = new Blob(chunks, { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+    log(`Output size: ${sizeMB} MB`);
+    setProgress(100, `Done! ${sizeMB} MB — click Download`);
+
+    const ext = mimeType.includes('webm') ? 'webm' : 'mp4';
+    const name = sourceFile.name.replace(/\.[^.]+$/, '') + '_3D_SBS.' + ext;
+    downloadLink.href = url;
+    downloadLink.download = name;
+    downloadLink.style.display = 'inline-block';
+    downloadLink.textContent = `▼ DOWNLOAD — ${name}`;
+    encodeBtn.disabled = false;
+    previewBtn.disabled = false;
+  };
+
+  recorder.start(100);
+
+  // Render frames
+  const totalFrames = Math.ceil(dur * fps);
+  let frame = 0;
+
+  renderVideo.currentTime = 0;
+  await new Promise(r => { renderVideo.onseeked = r; });
+  renderVideo.playbackRate = 1;
+  renderVideo.muted = true;
+
+  function renderFrame() {
+    if (renderVideo.ended || renderVideo.currentTime >= dur - 0.05) {
+      recorder.stop();
+      return;
+    }
+    drawSBSFrame(renderVideo, renderCanvas, renderCtx, scale);
+    frame++;
+    const pct = Math.min(5 + (renderVideo.currentTime / dur) * 90, 95);
+    setProgress(pct, `Encoding frame ${frame} / ~${totalFrames} (${renderVideo.currentTime.toFixed(1)}s)`);
+    requestAnimationFrame(renderFrame);
+  }
+
+  renderVideo.play();
+  renderVideo.ontimeupdate = null;
+  requestAnimationFrame(renderFrame);
+});
+</script>
+</body>
+</html>
