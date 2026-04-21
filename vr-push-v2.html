@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VR·PUSH — WebM→MP4 + GitHub Uploader</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --amber:  #ffaa00;
+    --amber2: #ff6600;
+    --cyan:   #00f5ff;
+    --magenta:#ff00cc;
+    --green:  #00ff88;
+    --red:    #ff3344;
+    --bg:     #060408;
+    --panel:  #0a0608;
+    --border: #2a1408;
+    --text:   #ffe8c0;
+    --dim:    #6a4020;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,170,0,0.018) 2px, rgba(255,170,0,0.018) 4px);
+    pointer-events: none; z-index: 999;
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,170,0,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,170,0,0.04) 1px, transparent 1px);
+    background-size: 44px 44px;
+    pointer-events: none; z-index: 0;
+  }
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 24px 16px 80px;
+  }
+  header { text-align: center; padding: 38px 0 30px; }
+  .logo {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(2rem, 6vw, 3.4rem);
+    font-weight: 900;
+    letter-spacing: 0.15em;
+    background: linear-gradient(135deg, var(--amber) 0%, var(--amber2) 60%, var(--magenta) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .logo-sub {
+    font-size: 0.7rem;
+    letter-spacing: 0.45em;
+    color: var(--dim);
+    margin-top: 7px;
+    text-transform: uppercase;
+  }
+  .badge {
+    display: inline-block;
+    background: linear-gradient(90deg, var(--amber2), var(--amber));
+    color: #000;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    padding: 3px 12px;
+    border-radius: 2px;
+    margin-top: 12px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 22px;
+    margin-bottom: 18px;
+    position: relative;
+    box-shadow: 0 0 30px rgba(255,100,0,0.05), inset 0 0 20px rgba(0,0,0,0.4);
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--amber), var(--amber2), transparent);
+  }
+  .step-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .step-num {
+    font-family: 'Orbitron', sans-serif;
+    font-size: .6rem;
+    font-weight: 900;
+    letter-spacing: .2em;
+    background: linear-gradient(135deg, var(--amber2), var(--amber));
+    color: #000;
+    padding: 3px 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .step-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: .65rem;
+    letter-spacing: .22em;
+    color: var(--amber);
+    text-transform: uppercase;
+  }
+  /* FFmpeg status bar */
+  .ffmpeg-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-radius: 2px;
+    font-size: .72rem;
+    border: 1px solid var(--border);
+    background: rgba(0,0,0,0.3);
+    margin-bottom: 16px;
+  }
+  .ffmpeg-status.loading { color: var(--amber); border-color: rgba(255,170,0,0.3); }
+  .ffmpeg-status.ready   { color: var(--green); border-color: rgba(0,255,136,0.3); }
+  .ffmpeg-status.error   { color: var(--red);   border-color: rgba(255,50,68,0.3); }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .loading .status-dot { background: var(--amber); animation: pulse 1s infinite; }
+  .ready   .status-dot { background: var(--green);  box-shadow: 0 0 6px var(--green); }
+  .error   .status-dot { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  /* Dropzone */
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 4px;
+    padding: 46px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .25s;
+    position: relative;
+    overflow: hidden;
+    background: rgba(255,170,0,0.01);
+  }
+  .dropzone:hover, .dropzone.over {
+    border-color: var(--amber);
+    background: rgba(255,170,0,0.04);
+    box-shadow: 0 0 24px rgba(255,170,0,0.1);
+  }
+  .dropzone input[type=file] {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 3rem; margin-bottom: 10px; filter: drop-shadow(0 0 10px var(--amber)); }
+  .drop-text { font-size: .95rem; color: var(--text); margin-bottom: 5px; }
+  .drop-sub  { font-size: .68rem; color: var(--dim); letter-spacing: .1em; }
+  .meta-row { display: none; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .chip {
+    background: rgba(255,170,0,0.07);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 4px 12px;
+    font-size: .7rem;
+    color: var(--amber);
+  }
+  /* Settings */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media(max-width:580px){ .grid2 { grid-template-columns: 1fr; } }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: .65rem; letter-spacing: .15em; color: var(--dim); text-transform: uppercase; }
+  .field select, .field input[type=text], .field input[type=password] {
+    background: rgba(255,170,0,0.04);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: .82rem;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color .2s;
+    width: 100%;
+  }
+  .field select:focus,
+  .field input[type=text]:focus,
+  .field input[type=password]:focus { border-color: var(--amber); }
+  .field select option { background: #0a0608; }
+  /* Progress */
+  .progress-wrap { display: none; flex-direction: column; gap: 9px; }
+  .prog-track { width: 100%; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .prog-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--amber2), var(--amber));
+    border-radius: 3px;
+    box-shadow: 0 0 8px var(--amber);
+    transition: width .15s linear;
+  }
+  .prog-label { font-size: .7rem; color: var(--dim); letter-spacing: .08em; }
+  .log-box {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 10px 12px;
+    font-size: .68rem;
+    color: var(--dim);
+    min-height: 72px;
+    max-height: 140px;
+    overflow-y: auto;
+    line-height: 1.9;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  .log-box .ok  { color: var(--green); }
+  .log-box .err { color: var(--red); }
+  .log-box .hi  { color: var(--amber); }
+  /* Buttons */
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: .6rem;
+    font-weight: 700;
+    letter-spacing: .18em;
+    padding: 11px 22px;
+    border-radius: 2px;
+    border: none;
+    cursor: pointer;
+    transition: all .2s;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .btn:disabled { opacity: .28; cursor: not-allowed; pointer-events: none; }
+  .btn-amber {
+    background: linear-gradient(135deg, var(--amber2), var(--amber));
+    color: #000;
+    box-shadow: 0 0 18px rgba(255,150,0,.3);
+  }
+  .btn-amber:hover:not(:disabled) { box-shadow: 0 0 30px rgba(255,150,0,.55); transform: translateY(-1px); }
+  .btn-outline { background: transparent; color: var(--amber); border: 1px solid var(--amber); }
+  .btn-outline:hover:not(:disabled) { background: rgba(255,170,0,.07); }
+  .btn-green {
+    background: linear-gradient(135deg, #00cc66, var(--green));
+    color: #000;
+    animation: glow-green 2s infinite;
+  }
+  @keyframes glow-green { 0%,100%{ box-shadow:0 0 18px rgba(0,255,136,.3) } 50%{ box-shadow:0 0 36px rgba(0,255,136,.6) } }
+  .btn-upload {
+    background: linear-gradient(135deg, #0066ff, #00aaff);
+    color: #fff;
+    animation: glow-blue 2s infinite;
+  }
+  @keyframes glow-blue { 0%,100%{ box-shadow:0 0 18px rgba(0,100,255,.3) } 50%{ box-shadow:0 0 36px rgba(0,170,255,.6) } }
+  /* Preview */
+  #previewSection { display: none; flex-direction: column; align-items: center; gap: 12px; }
+  #outputVideo {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: #000;
+    box-shadow: 0 0 30px rgba(255,150,0,.12);
+    max-height: 320px;
+  }
+  /* Upload */
+  .gh-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media(max-width:580px){ .gh-grid { grid-template-columns: 1fr; } }
+  .full-col { grid-column: 1 / -1; }
+  .upload-result {
+    display: none;
+    padding: 14px 18px;
+    border-radius: 2px;
+    font-size: .75rem;
+    line-height: 1.7;
+    margin-top: 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .upload-result.ok  { background: rgba(0,255,136,.07); border: 1px solid rgba(0,255,136,.3); color: var(--green); }
+  .upload-result.err { background: rgba(255,50,68,.07);  border: 1px solid rgba(255,50,68,.3);  color: var(--red); }
+  .link-out { color: var(--amber); text-decoration: underline; cursor: pointer; }
+  #uploadProg { display: none; margin-bottom: 8px; }
+  .input-wrap { position: relative; }
+  .eye-btn {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    cursor: pointer; font-size: .85rem; user-select: none; color: var(--dim);
+  }
+  .eye-btn:hover { color: var(--amber); }
+  .input-wrap input { padding-right: 34px !important; }
+  .info-box {
+    background: rgba(255,170,0,0.05);
+    border: 1px solid rgba(255,170,0,0.15);
+    border-radius: 2px;
+    padding: 11px 16px;
+    font-size: .69rem;
+    color: var(--dim);
+    line-height: 1.75;
+    margin-top: 12px;
+  }
+  .info-box strong { color: var(--amber); }
+  .sep { height: 1px; background: linear-gradient(90deg,transparent,var(--border),transparent); margin: 18px 0; }
+  footer {
+    text-align: center;
+    font-size: .62rem;
+    color: var(--dim);
+    letter-spacing: .14em;
+    padding: 22px 0;
+    border-top: 1px solid var(--border);
+    margin-top: 40px;
+  }
+  footer span { color: var(--amber); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">VR·PUSH</div>
+    <div class="logo-sub">WebM → MP4 Converter + GitHub Uploader</div>
+    <div class="badge">⬡ FFMPEG.WASM 0.12 · NO SharedArrayBuffer ⬡</div>
+  </header>
+
+  <!-- STEP 1 -->
+  <div class="panel">
+    <div class="step-header">
+      <div class="step-num">STEP 01</div>
+      <div class="step-title">Load WebM File</div>
+    </div>
+
+    <!-- FFmpeg status -->
+    <div class="ffmpeg-status loading" id="ffmpegStatus">
+      <div class="status-dot"></div>
+      <span id="ffmpegStatusText">Loading FFmpeg core (single-threaded, ~30MB)…</span>
+    </div>
+
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept=".webm,video/webm,video/*"/>
+      <div class="drop-icon">🎞️</div>
+      <div class="drop-text">Drop WebM here or click to browse</div>
+      <div class="drop-sub">Accepts .webm · .mp4 · .mov · any video</div>
+    </div>
+
+    <div class="meta-row" id="metaRow">
+      <div class="chip" id="chipName">—</div>
+      <div class="chip" id="chipSize">—</div>
+      <div class="chip" id="chipType">—</div>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="panel">
+    <div class="step-header">
+      <div class="step-num">STEP 02</div>
+      <div class="step-title">Convert to MP4</div>
+    </div>
+
+    <div class="grid2">
+      <div class="field">
+        <label>Video Codec</label>
+        <select id="vcodec">
+          <option value="libx264" selected>H.264 (libx264) — Universal</option>
+          <option value="libx265">H.265 (libx265) — Smaller</option>
+          <option value="copy">Copy stream (no re-encode, fast)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Audio Codec</label>
+        <select id="acodec">
+          <option value="aac" selected>AAC — Universal</option>
+          <option value="mp3">MP3</option>
+          <option value="copy">Copy stream</option>
+          <option value="none">Strip audio</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Quality (CRF — lower = better)</label>
+        <select id="crf">
+          <option value="18">18 — Visually Lossless</option>
+          <option value="23" selected>23 — High Quality</option>
+          <option value="28">28 — Good / Smaller</option>
+          <option value="35">35 — Compressed</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Speed Preset</label>
+        <select id="preset">
+          <option value="ultrafast" selected>Ultrafast (recommended)</option>
+          <option value="superfast">Superfast</option>
+          <option value="fast">Fast</option>
+          <option value="medium">Medium</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="info-box">
+      ⚡ Uses <strong>FFmpeg.wasm 0.12 single-threaded core</strong> — no SharedArrayBuffer, no server, no install. Runs 100% in your browser. Ultrafast preset is recommended for speed.
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+      <div class="prog-label" id="progLabel">Initializing…</div>
+      <div class="log-box" id="logBox"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-amber" id="convertBtn" disabled>⬡ CONVERT TO MP4</button>
+      <a class="btn btn-green" id="dlBtn" style="display:none" download="output.mp4">▼ DOWNLOAD MP4</a>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="panel">
+    <div class="step-header">
+      <div class="step-num">STEP 03</div>
+      <div class="step-title">Preview Output</div>
+    </div>
+    <div id="previewSection">
+      <video id="outputVideo" controls></video>
+      <div class="chip" id="outSize">—</div>
+    </div>
+    <div id="previewPlaceholder" style="text-align:center; padding:28px; color:var(--dim); font-size:.75rem; letter-spacing:.1em;">
+      [ Convert a file to preview output here ]
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="panel">
+    <div class="step-header">
+      <div class="step-num">STEP 04</div>
+      <div class="step-title">Upload to GitHub</div>
+    </div>
+
+    <div class="gh-grid">
+      <div class="field full-col">
+        <label>GitHub Personal Access Token (repo scope required)</label>
+        <div class="input-wrap">
+          <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"/>
+          <span class="eye-btn" id="eyeBtn">👁</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Repository (owner/repo)</label>
+        <input type="text" id="ghRepo" placeholder="tflanigan/vr-videos"/>
+      </div>
+      <div class="field">
+        <label>Branch</label>
+        <input type="text" id="ghBranch" value="main" placeholder="main"/>
+      </div>
+      <div class="field full-col">
+        <label>Upload Path (e.g. videos/myvideo.mp4)</label>
+        <input type="text" id="ghPath" placeholder="videos/converted.mp4"/>
+      </div>
+      <div class="field full-col">
+        <label>Commit Message</label>
+        <input type="text" id="ghMsg" value="Upload converted 3D VR video" placeholder="commit message"/>
+      </div>
+    </div>
+
+    <div class="info-box">
+      ⚡ <strong>GitHub API limit:</strong> Files over ~50MB may fail. For huge videos use git CLI. Token is in-memory by default — use Save Token to persist in localStorage.
+    </div>
+
+    <div class="sep"></div>
+
+    <div id="uploadProg">
+      <div class="prog-track"><div class="prog-fill" id="uploadFill"></div></div>
+      <div class="prog-label" id="uploadLabel">Preparing…</div>
+    </div>
+
+    <div class="upload-result" id="uploadResult"></div>
+
+    <div class="btn-row">
+      <button class="btn btn-upload" id="uploadBtn" disabled>⬆ PUSH TO GITHUB</button>
+      <button class="btn btn-outline" onclick="loadSavedToken()">◈ RESTORE TOKEN</button>
+      <button class="btn btn-outline" onclick="saveToken()">💾 SAVE TOKEN</button>
+    </div>
+  </div>
+
+  <footer>
+    VR·PUSH // <span>Friday</span> × <span>GOD OF TECHNOLOGY</span> 👑 // FFmpeg.wasm 0.12 Single-Thread Edition
+  </footer>
+</div>
+
+<script type="module">
+// ── FFmpeg 0.12 — single-threaded, no SharedArrayBuffer ──────────────────────
+// We load it dynamically so we can use toBlobURL for the WASM binary
+// which allows it to work even from file:// origins.
+
+const FFMPEG_CDN   = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+const UTIL_CDN     = 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js';
+const CORE_JS_URL  = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js';
+const CORE_WASM_URL= 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm';
+
+let ffmpeg = null;
+let ffmpegReady = false;
+let sourceFile = null;
+let mp4Blob = null;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const statusEl      = document.getElementById('ffmpegStatus');
+const statusTextEl  = document.getElementById('ffmpegStatusText');
+const dropzone      = document.getElementById('dropzone');
+const fileInput     = document.getElementById('fileInput');
+const convertBtn    = document.getElementById('convertBtn');
+const dlBtn         = document.getElementById('dlBtn');
+const uploadBtn     = document.getElementById('uploadBtn');
+const progressWrap  = document.getElementById('progressWrap');
+const progFill      = document.getElementById('progFill');
+const progLabel     = document.getElementById('progLabel');
+const logBox        = document.getElementById('logBox');
+const previewSection= document.getElementById('previewSection');
+const previewPH     = document.getElementById('previewPlaceholder');
+const outputVideo   = document.getElementById('outputVideo');
+const outSize       = document.getElementById('outSize');
+const metaRow       = document.getElementById('metaRow');
+
+// ── Load FFmpeg ───────────────────────────────────────────────────────────────
+async function initFFmpeg() {
+  try {
+    setStatus('loading', 'Importing FFmpeg module…');
+
+    const { FFmpeg } = await import(FFMPEG_CDN);
+    const { fetchFile, toBlobURL } = await import(UTIL_CDN);
+
+    window.__fetchFile = fetchFile; // stash for later
+
+    ffmpeg = new FFmpeg();
+
+    ffmpeg.on('log', ({ message }) => {
+      // Only surface meaningful lines
+      if (/frame=|time=|error|Error|warning|speed=/i.test(message)) {
+        appendLog(message.trim());
+      }
+    });
+
+    ffmpeg.on('progress', ({ progress, time }) => {
+      const pct = Math.min(Math.round(progress * 100), 99);
+      setProg(pct, `Transcoding… ${pct}% (${(time / 1e6).toFixed(1)}s)`);
+    });
+
+    setStatus('loading', 'Fetching FFmpeg core JS…');
+    const coreURL = await toBlobURL(CORE_JS_URL, 'text/javascript');
+
+    setStatus('loading', 'Fetching FFmpeg WASM binary…');
+    const wasmURL = await toBlobURL(CORE_WASM_URL, 'application/wasm');
+
+    setStatus('loading', 'Initializing WASM…');
+    await ffmpeg.load({ coreURL, wasmURL });
+
+    ffmpegReady = true;
+    setStatus('ready', '✓ FFmpeg ready — no SharedArrayBuffer required');
+    updateConvertBtn();
+
+  } catch (e) {
+    setStatus('error', '✗ Load failed: ' + e.message);
+    addLog('Error details: ' + e.message, 'err');
+  }
+}
+
+initFFmpeg();
+
+// ── Status helper ─────────────────────────────────────────────────────────────
+function setStatus(type, msg) {
+  statusEl.className = 'ffmpeg-status ' + type;
+  statusTextEl.textContent = msg;
+}
+
+// ── File loading ──────────────────────────────────────────────────────────────
+dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('over');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+function loadFile(f) {
+  sourceFile = f;
+  mp4Blob = null;
+
+  document.getElementById('chipName').textContent = f.name.length > 24 ? f.name.slice(0,22)+'…' : f.name;
+  document.getElementById('chipSize').textContent = fmtSize(f.size);
+  document.getElementById('chipType').textContent = f.type || 'video/unknown';
+  metaRow.style.display = 'flex';
+
+  // Auto-fill upload path
+  const baseName = f.name.replace(/\.[^.]+$/, '') + '.mp4';
+  if (!document.getElementById('ghPath').value)
+    document.getElementById('ghPath').value = 'videos/' + baseName;
+  dlBtn.download = baseName;
+
+  uploadBtn.disabled = true;
+  dlBtn.style.display = 'none';
+  previewSection.style.display = 'none';
+  previewPH.style.display = 'block';
+  document.getElementById('uploadResult').style.display = 'none';
+  updateConvertBtn();
+}
+
+function updateConvertBtn() {
+  convertBtn.disabled = !(sourceFile && ffmpegReady);
+}
+
+// ── Convert ───────────────────────────────────────────────────────────────────
+convertBtn.addEventListener('click', async () => {
+  if (!sourceFile || !ffmpegReady) return;
+
+  mp4Blob = null;
+  uploadBtn.disabled = true;
+  dlBtn.style.display = 'none';
+  logBox.innerHTML = '';
+  showProgress(true);
+  setProg(0, 'Reading input file…');
+
+  const vcodec = document.getElementById('vcodec').value;
+  const acodec = document.getElementById('acodec').value;
+  const crf    = document.getElementById('crf').value;
+  const preset = document.getElementById('preset').value;
+
+  try {
+    addLog(`Input: ${sourceFile.name} (${fmtSize(sourceFile.size)})`, 'hi');
+    addLog(`Codec: ${vcodec} / audio: ${acodec} | CRF ${crf} | ${preset}`, 'hi');
+
+    const inExt  = (sourceFile.name.split('.').pop() || 'webm').toLowerCase();
+    const inName = `input.${inExt}`;
+
+    addLog('Writing file to FFmpeg virtual FS…');
+    const fileData = await window.__fetchFile(sourceFile);
+    await ffmpeg.writeFile(inName, fileData);
+
+    // Build args
+    const args = ['-i', inName];
+
+    if (vcodec === 'copy') {
+      args.push('-c:v', 'copy');
+    } else {
+      args.push('-c:v', vcodec, '-crf', crf, '-preset', preset);
+    }
+
+    if (acodec === 'none') {
+      args.push('-an');
+    } else if (acodec === 'copy') {
+      args.push('-c:a', 'copy');
+    } else {
+      args.push('-c:a', acodec, '-b:a', '192k');
+    }
+
+    args.push('-movflags', '+faststart', 'output.mp4');
+    addLog(`▶ ffmpeg ${args.join(' ')}`, 'hi');
+    setProg(5, 'Transcoding… (grab a snack, this runs in-browser)');
+
+    await ffmpeg.exec(args);
+
+    const data = await ffmpeg.readFile('output.mp4');
+    mp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
+
+    // Cleanup
+    try { await ffmpeg.deleteFile(inName); } catch(_) {}
+    try { await ffmpeg.deleteFile('output.mp4'); } catch(_) {}
+
+    addLog(`✓ Done! Output: ${fmtSize(mp4Blob.size)}`, 'ok');
+    setProg(100, `✓ Converted — ${fmtSize(mp4Blob.size)}`);
+
+    const url = URL.createObjectURL(mp4Blob);
+    dlBtn.href = url;
+    dlBtn.style.display = 'inline-block';
+
+    outputVideo.src = url;
+    outSize.textContent = fmtSize(mp4Blob.size);
+    previewSection.style.display = 'flex';
+    previewPH.style.display = 'none';
+    uploadBtn.disabled = false;
+
+  } catch(e) {
+    addLog('✗ Error: ' + e.message, 'err');
+    setProg(0, '✗ Conversion failed — check log above');
+  }
+});
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+uploadBtn.addEventListener('click', uploadToGitHub);
+
+async function uploadToGitHub() {
+  if (!mp4Blob) return;
+
+  const token  = document.getElementById('ghToken').value.trim();
+  const repo   = document.getElementById('ghRepo').value.trim();
+  const branch = document.getElementById('ghBranch').value.trim() || 'main';
+  const path   = document.getElementById('ghPath').value.trim();
+  const msg    = document.getElementById('ghMsg').value.trim() || 'Upload converted video';
+
+  if (!token)              { showUploadResult('err', '✗ GitHub token is required'); return; }
+  if (!repo.includes('/')) { showUploadResult('err', '✗ Enter a valid repo: owner/repo-name'); return; }
+  if (!path)               { showUploadResult('err', '✗ Enter an upload path'); return; }
+
+  const upProg  = document.getElementById('uploadProg');
+  const upFill  = document.getElementById('uploadFill');
+  const upLabel = document.getElementById('uploadLabel');
+
+  upProg.style.display = 'block';
+  document.getElementById('uploadResult').style.display = 'none';
+  uploadBtn.disabled = true;
+
+  upFill.style.width = '10%';
+  upLabel.textContent = 'Base64 encoding…';
+
+  let base64;
+  try {
+    base64 = await blobToBase64(mp4Blob);
+  } catch(e) {
+    showUploadResult('err', '✗ Encode failed: ' + e.message);
+    uploadBtn.disabled = false; upProg.style.display = 'none'; return;
+  }
+
+  upFill.style.width = '40%';
+  upLabel.textContent = `Uploading ${fmtSize(mp4Blob.size)} to GitHub…`;
+
+  const headers = {
+    'Authorization': `token ${token}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json'
+  };
+  const apiUrl = `https://api.github.com/repos/${repo}/contents/${path}`;
+
+  // Check for existing file (need SHA to update)
+  let sha;
+  try {
+    const chk = await fetch(apiUrl, { headers });
+    if (chk.ok) { const ex = await chk.json(); sha = ex.sha; }
+  } catch(_) {}
+
+  upFill.style.width = '65%';
+  upLabel.textContent = 'Sending to GitHub API…';
+
+  const body = { message: msg, content: base64, branch };
+  if (sha) body.sha = sha;
+
+  try {
+    const res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+    upFill.style.width = '100%';
+
+    if (res.ok) {
+      const data = await res.json();
+      const htmlUrl = data.content?.html_url || `https://github.com/${repo}/blob/${branch}/${path}`;
+      const rawUrl  = data.content?.download_url || '';
+      showUploadResult('ok',
+        `✓ ${sha ? 'File updated' : 'New file created'}!\n` +
+        `Repo: ${repo}   Branch: ${branch}\nPath: ${path}\n` +
+        `GitHub: ${htmlUrl}\n` +
+        (rawUrl ? `Raw URL: ${rawUrl}` : ''),
+        htmlUrl
+      );
+    } else {
+      const err = await res.json();
+      showUploadResult('err', `✗ GitHub ${res.status}: ${err.message}`);
+    }
+  } catch(e) {
+    showUploadResult('err', '✗ Network error: ' + e.message);
+  }
+
+  uploadBtn.disabled = false;
+  upProg.style.display = 'none';
+}
+
+function showUploadResult(type, msg, link) {
+  const el = document.getElementById('uploadResult');
+  el.className = 'upload-result ' + type;
+  el.style.display = 'block';
+  if (link) {
+    el.innerHTML = msg.split('\n').map(l => {
+      if (l.startsWith('GitHub:') || l.startsWith('Raw URL:')) {
+        const [label, ...rest] = l.split(': ');
+        const url = rest.join(': ');
+        return `${label}: <a class="link-out" href="${url}" target="_blank">${url}</a>`;
+      }
+      return escHtml(l);
+    }).join('<br/>');
+  } else {
+    el.textContent = msg;
+  }
+}
+
+// ── Token helpers ─────────────────────────────────────────────────────────────
+window.saveToken = function() {
+  const t = document.getElementById('ghToken').value.trim();
+  if (!t) { alert('Enter a token first'); return; }
+  localStorage.setItem('vr_push_token', t);
+  alert('Token saved to localStorage!');
+};
+window.loadSavedToken = function() {
+  const t = localStorage.getItem('vr_push_token');
+  if (t) { document.getElementById('ghToken').value = t; alert('Token restored!'); }
+  else   { alert('No saved token found'); }
+};
+
+document.getElementById('eyeBtn').addEventListener('click', () => {
+  const inp = document.getElementById('ghToken');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function addLog(msg, cls = '') {
+  const el = document.createElement('div');
+  if (cls) el.className = cls;
+  el.textContent = '> ' + msg;
+  logBox.appendChild(el);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+function appendLog(msg) {
+  if (!msg.trim()) return;
+  addLog(msg);
+}
+
+function showProgress(on) { progressWrap.style.display = on ? 'flex' : 'none'; }
+
+function setProg(pct, label) {
+  progFill.style.width = pct + '%';
+  progLabel.textContent = label;
+}
+
+function fmtSize(b) {
+  if (!b) return '0 B';
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1024*1024*1024) return (b/1024/1024).toFixed(2) + ' MB';
+  return (b/1024/1024/1024).toFixed(3) + ' GB';
+}
+
+function blobToBase64(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = () => rej(new Error('FileReader failed'));
+    r.readAsDataURL(blob);
+  });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
